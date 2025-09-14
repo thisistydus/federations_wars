@@ -1,8 +1,8 @@
-import random, time
+import random
+import time
+import json
 from datetime import datetime
 import streamlit as st
-import json
-from io import StringIO
 
 # =========================
 # Session + Utilities
@@ -37,8 +37,22 @@ def add_ticker(event_type, headline, blurb="", severity=2, confidence=1.0, entit
         "week": st.session_state.db["universe"]["current_week"]
     })
 
-def clamp(v, lo, hi): 
+def clamp(v, lo, hi):
     return max(lo, min(hi, v))
+
+# ---- Save / Load helpers ----
+def export_universe_json() -> str:
+    """Return the entire in-memory db as a pretty JSON string."""
+    ss()
+    return json.dumps(st.session_state.db, indent=2)
+
+def import_universe_json(text: str):
+    """Replace current db with uploaded JSON (minimal validation)."""
+    data = json.loads(text)
+    if not isinstance(data, dict) or "universe" not in data or "federations" not in data:
+        raise ValueError("Invalid universe JSON (missing required keys).")
+    st.session_state.db = data
+    add_ticker("UNIVERSE_IMPORT", "Universe imported", "Loaded from JSON file.", severity=1)
 
 # =========================
 # Seed Demo Data
@@ -65,7 +79,7 @@ def seed_demo():
     ]
     for f in feds:
         fid = new_id("fed")
-        st.session_state.db["federations"][fid] = {"id": fid, **f}
+        db["federations"][fid] = {"id": fid, **f}
 
     # Default rules by style if missing
     for fid, f in db["federations"].items():
@@ -122,7 +136,7 @@ def seed_demo():
 # =========================
 # Query Helpers
 # =========================
-def current_week(): 
+def current_week():
     return st.session_state.db["universe"]["current_week"]
 
 def fed_employed_workers(fid, week=None):
@@ -136,26 +150,6 @@ def fed_employed_workers(fid, week=None):
 
 def shows_for_week(week):
     return [s for s in st.session_state.db["shows"].values() if s["scheduled_week"]==week]
-
-def export_universe_json() -> str:
-    """Return the entire in-memory db as a JSON string (pretty)."""
-    ss()
-    # Avoid non-serializable types
-    db = st.session_state.db
-    return json.dumps(db, indent=2)
-
-def import_universe_json(text: str):
-    """Replace current db with uploaded JSON."""
-    try:
-        data = json.loads(text)
-        # minimal sanity check
-        assert isinstance(data, dict) and "universe" in data and "federations" in data
-        st.session_state.db = data
-        add_ticker("UNIVERSE_IMPORT", "Universe imported", "Loaded from JSON file.", severity=1)
-        return True, None
-    except Exception as e:
-        return False, str(e)
-
 
 # =========================
 # Simulation Logic
@@ -179,7 +173,7 @@ def ensure_card(show_id):
     """Auto-book up to 4 matches respecting federation rules:
        - MMA: singles only (1v1)
        - Otherwise: can include tag (2v2) and trios (3v3) if allowed
-       - Intergender only if fed allows; otherwise teams and opponents must be single-gender
+       - Intergender only if fed allows; otherwise teams/opponents must be single-gender
     """
     db = st.session_state.db
     show = db["shows"][show_id]
@@ -213,7 +207,7 @@ def ensure_card(show_id):
 
     def can_form_team(k, pool_local, allow_intergender):
         """Try to take k from pool with same gender unless intergender allowed."""
-        if k <= 0 or len(pool_local) < k: 
+        if k <= 0 or len(pool_local) < k:
             return None
         if allow_intergender:
             pick = random.sample(pool_local, k)
@@ -223,7 +217,7 @@ def ensure_card(show_id):
         for p in pool_local:
             by_g.setdefault(p[1], []).append(p)
         genders = [g for g in by_g if len(by_g[g]) >= k]
-        if not genders: 
+        if not genders:
             return None
         g = random.choice(genders)
         pick = random.sample(by_g[g], k)
@@ -242,7 +236,7 @@ def ensure_card(show_id):
         allow_inter = fed.get("allow_intergender", True)
         # Team A
         a = can_form_team(k, pool, allow_inter)
-        if not a: 
+        if not a:
             break
         a_ids, pool = pop_ids(a, pool)
         # Team B
@@ -257,12 +251,12 @@ def ensure_card(show_id):
     order = 1
     for (a_ids, b_ids, k) in matches:
         mid = new_id("match")
-        st.session_state.db["matches"][mid] = {
+        db["matches"][mid] = {
             "id": mid, "show_id": show_id, "order": order,
             "stipulation": "Standard",
             "is_title_match": False,
             "participants": a_ids + b_ids,
-            "teams": [a_ids, b_ids],  # NEW: preserve teams for sim/render
+            "teams": [a_ids, b_ids],  # preserve teams for sim/render
             "result": None, "recap_text": ""
         }
         order += 1
@@ -415,7 +409,7 @@ def create_worker(ring_name, style, alignment, skill, charisma, prestige, risk, 
     return wid
 
 def employ_worker(worker_id, fed_id, start_week=None, masked=False):
-    if start_week is None: 
+    if start_week is None:
         start_week = current_week()
     st.session_state.db["employment"].append({
         "worker_id": worker_id, "fed_id": fed_id,
@@ -426,46 +420,61 @@ def employ_worker(worker_id, fed_id, start_week=None, masked=False):
     f = st.session_state.db['federations'][fed_id]['name']
     add_ticker("EMPLOYMENT", f"Hired: {w} → {f}", f"{'Masked' if masked else 'Unmasked'}")
 
-# -------- UI --------
+# =========================
+# UI
+# =========================
+st.set_page_config(page_title="Federation Wars — Alpha", layout="wide")
+ss()
+
 with st.sidebar:
-    st.header("Admin Tools")
+    st.title("Federation Wars α")
+    st.caption("Text sim • early alpha")
+    wk = current_week()
+    st.metric("In-game Week", wk)
 
     if st.button("Seed Demo Data"):
         seed_demo()
-        st.success("Demo data seeded.")
+        st.success("Seeded demo data.")
 
     if st.button("Run All Cards (This Week)"):
         run_all_cards_this_week()
-        st.success("All shows this week have been run.")
 
     if st.button("Skip Time (+1 week)"):
         skip_time()
-        st.success("Advanced one week.")
 
     st.divider()
     st.subheader("Save / Load")
-
-    # Save
-    payload = export_universe_json()
+    # Save (direct download)
     st.download_button(
         "Download universe.json",
-        data=payload,
+        data=export_universe_json(),
         file_name="universe.json",
         mime="application/json"
     )
-
     # Load
     uploaded = st.file_uploader("Load JSON", type=["json"])
     if uploaded is not None:
-        txt = uploaded.read().decode("utf-8")
-        ok, err = import_universe_json(txt)
-        if ok:
+        try:
+            txt = uploaded.read().decode("utf-8")
+            import_universe_json(txt)
             st.success("Loaded universe.json")
-        else:
-            st.error(f"Import failed: {err}")
+        except Exception as e:
+            st.error(f"Import failed: {e}")
 
+    st.divider()
+    page = st.radio("Pages", ["Dashboard", "Federations", "Workers", "Shows", "News"], index=0)
 
+# Ticker strip
+def render_ticker_strip(n=6):
+    events = st.session_state.db["ticker"][:n]
+    if not events:
+        return
+    lines = " | ".join([f"[{e['type']}] {e['headline']}" for e in events])
+    st.info(lines, icon="📰")
 
+render_ticker_strip()
+
+db = st.session_state.db
 
 # ---------- Dashboard ----------
 if page == "Dashboard":
@@ -627,6 +636,8 @@ elif page == "Shows":
                     r = m["result"]
                     wnames = ", ".join([db["workers"][wid]["ring_name"] for wid in r["winners"]])
                     st.write(f"• {line} — **{wnames}** by {r['method']} ({r['time_s']}s)")
+                    if m["recap_text"]:
+                        st.caption(m["recap_text"])
                 else:
                     st.write(f"• {line} — _(not run)_")
         else:
@@ -646,6 +657,6 @@ elif page == "News":
     types = ["All"] + sorted({e["type"] for e in db["ticker"]})
     tsel = st.selectbox("Filter by type", types)
     for e in db["ticker"]:
-        if tsel!="All" and e["type"]!=tsel: 
+        if tsel!="All" and e["type"]!=tsel:
             continue
         st.write(f"**[{e['type']}] {e['headline']}**  \n{e['blurb']}  \n*Week {e['week']} • {e['ts']}*")
