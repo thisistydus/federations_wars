@@ -426,36 +426,33 @@ def employ_worker(worker_id, fed_id, start_week=None, masked=False):
     f = st.session_state.db['federations'][fed_id]['name']
     add_ticker("EMPLOYMENT", f"Hired: {w} → {f}", f"{'Masked' if masked else 'Unmasked'}")
 
-# =========================
-# UI
-# =========================
-st.set_page_config(page_title="Federation Wars — Alpha", layout="wide")
-ss()
-
+# -------- UI --------
 with st.sidebar:
-    st.title("Federation Wars α")
-    st.caption("Text sim • early alpha")
-    wk = current_week()
-    st.metric("In-game Week", wk)
+    st.header("Admin Tools")
+
     if st.button("Seed Demo Data"):
         seed_demo()
-        st.success("Seeded demo data.")
+        st.success("Demo data seeded.")
+
     if st.button("Run All Cards (This Week)"):
         run_all_cards_this_week()
+        st.success("All shows this week have been run.")
+
     if st.button("Skip Time (+1 week)"):
         skip_time()
+        st.success("Advanced one week.")
+
     st.divider()
-        st.divider()
     st.subheader("Save / Load")
+
     # Save
-    if st.button("Save (download JSON)"):
-        payload = export_universe_json()
-        st.download_button(
-            "Download universe.json",
-            data=payload,
-            file_name="universe.json",
-            mime="application/json"
-        )
+    payload = export_universe_json()
+    st.download_button(
+        "Download universe.json",
+        data=payload,
+        file_name="universe.json",
+        mime="application/json"
+    )
 
     # Load
     uploaded = st.file_uploader("Load JSON", type=["json"])
@@ -467,17 +464,6 @@ with st.sidebar:
         else:
             st.error(f"Import failed: {err}")
 
-    page = st.radio("Pages", ["Dashboard", "Federations", "Workers", "Shows", "News"], index=0)
-    
-
-def render_ticker_strip(n=6):
-    events = st.session_state.db["ticker"][:n]
-    if not events: 
-        return
-    lines = " | ".join([f"[{e['type']}] {e['headline']}" for e in events])
-    st.info(lines, icon="📰")
-
-render_ticker_strip()
 
 
 
