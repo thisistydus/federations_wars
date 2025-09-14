@@ -447,7 +447,6 @@ with st.sidebar:
     st.divider()
         st.divider()
     st.subheader("Save / Load")
-
     # Save
     if st.button("Save (download JSON)"):
         payload = export_universe_json()
