@@ -1,6 +1,8 @@
 import random, time
 from datetime import datetime
 import streamlit as st
+import json
+from io import StringIO
 
 # =========================
 # Session + Utilities
@@ -134,6 +136,26 @@ def fed_employed_workers(fid, week=None):
 
 def shows_for_week(week):
     return [s for s in st.session_state.db["shows"].values() if s["scheduled_week"]==week]
+
+def export_universe_json() -> str:
+    """Return the entire in-memory db as a JSON string (pretty)."""
+    ss()
+    # Avoid non-serializable types
+    db = st.session_state.db
+    return json.dumps(db, indent=2)
+
+def import_universe_json(text: str):
+    """Replace current db with uploaded JSON."""
+    try:
+        data = json.loads(text)
+        # minimal sanity check
+        assert isinstance(data, dict) and "universe" in data and "federations" in data
+        st.session_state.db = data
+        add_ticker("UNIVERSE_IMPORT", "Universe imported", "Loaded from JSON file.", severity=1)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
 
 # =========================
 # Simulation Logic
@@ -435,6 +457,23 @@ def render_ticker_strip(n=6):
 render_ticker_strip()
 
 db = st.session_state.db
+
+    st.divider()
+    st.subheader("Save / Load")
+    # Save
+    if st.button("Save (download JSON)"):
+        payload = export_universe_json()
+        st.download_button("Download universe.json", data=payload, file_name="universe.json", mime="application/json")
+    # Load
+    uploaded = st.file_uploader("Load JSON", type=["json"])
+    if uploaded is not None:
+        txt = uploaded.read().decode("utf-8")
+        ok, err = import_universe_json(txt)
+        if ok:
+            st.success("Loaded universe.json")
+        else:
+            st.error(f"Import failed: {err}")
+
 
 # ---------- Dashboard ----------
 if page == "Dashboard":
