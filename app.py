@@ -445,7 +445,31 @@ with st.sidebar:
     if st.button("Skip Time (+1 week)"):
         skip_time()
     st.divider()
+        st.divider()
+    st.subheader("Save / Load")
+
+    # Save
+    if st.button("Save (download JSON)"):
+        payload = export_universe_json()
+        st.download_button(
+            "Download universe.json",
+            data=payload,
+            file_name="universe.json",
+            mime="application/json"
+        )
+
+    # Load
+    uploaded = st.file_uploader("Load JSON", type=["json"])
+    if uploaded is not None:
+        txt = uploaded.read().decode("utf-8")
+        ok, err = import_universe_json(txt)
+        if ok:
+            st.success("Loaded universe.json")
+        else:
+            st.error(f"Import failed: {err}")
+
     page = st.radio("Pages", ["Dashboard", "Federations", "Workers", "Shows", "News"], index=0)
+    
 
 def render_ticker_strip(n=6):
     events = st.session_state.db["ticker"][:n]
@@ -456,23 +480,6 @@ def render_ticker_strip(n=6):
 
 render_ticker_strip()
 
-db = st.session_state.db
-
-    st.divider()
-    st.subheader("Save / Load")
-    # Save
-    if st.button("Save (download JSON)"):
-        payload = export_universe_json()
-        st.download_button("Download universe.json", data=payload, file_name="universe.json", mime="application/json")
-    # Load
-    uploaded = st.file_uploader("Load JSON", type=["json"])
-    if uploaded is not None:
-        txt = uploaded.read().decode("utf-8")
-        ok, err = import_universe_json(txt)
-        if ok:
-            st.success("Loaded universe.json")
-        else:
-            st.error(f"Import failed: {err}")
 
 
 # ---------- Dashboard ----------
