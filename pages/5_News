@@ -1,0 +1,10 @@
+import streamlit as st
+from fw.db import ss
+ss(); db = st.session_state.db
+
+st.header("News")
+types = ["All"] + sorted({e["type"] for e in db["ticker"]})
+tsel = st.selectbox("Filter by type", types)
+for e in db["ticker"]:
+    if tsel!="All" and e["type"]!=tsel: continue
+    st.write(f"**[{e['type']}] {e['headline']}**  \n{e['blurb']}  \n*Week {e['week']} • {e['ts']}*")

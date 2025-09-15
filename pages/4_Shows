@@ -1,0 +1,59 @@
+import streamlit as st
+from fw.db import ss
+from fw.sim.booking import ensure_card
+from fw.sim.engine import run_card
+ss(); db = st.session_state.db
+
+st.header("Shows")
+
+fchoice = st.selectbox("Filter by Federation", ["All"] + list(db["federations"].keys()),
+                       format_func=lambda i: "All" if i=="All" else db["federations"][i]["name"])
+shows = list(db["shows"].values())
+if fchoice != "All": shows = [s for s in shows if s["federation_id"]==fchoice]
+shows.sort(key=lambda s: (s["scheduled_week"], s["name"]))
+
+for s in shows:
+    fed = db["federations"][s["federation_id"]]["name"]
+    st.subheader(f"{s['name']} — {fed} (Week {s['scheduled_week']}) [{s['status']}]")
+
+    ms = [m for m in db["matches"].values() if m["show_id"]==s["id"]]
+    ms.sort(key=lambda x: x["order"])
+    if ms:
+        for m in ms:
+            teams = m.get("teams")
+            if teams:
+                tnames = []
+                for team in teams:
+                    names = []
+                    for pid in team:
+                        w = db["workers"][pid]
+                        emp = next((e for e in db["employment"]
+                                    if e["worker_id"]==pid and e["fed_id"]==s["federation_id"]
+                                    and (e["end_week"] is None or e["end_week"]>=s["scheduled_week"])
+                                    and e["start_week"]<=s["scheduled_week"]), None)
+                        mask = "🎭" if (emp and emp.get("masked")) else ""
+                        names.append(f"{w['ring_name']}{mask}")
+                    tnames.append(" & ".join(names))
+                line = f"{tnames[0]} **vs** {tnames[1]}"
+            else:
+                names = [db["workers"][pid]["ring_name"] for pid in m["participants"]]
+                line = " vs ".join(names)
+
+            if m["result"] and m["result"].get("canceled"):
+                st.write(f"• {line} — **CANCELED** ({m['result']['reason']})")
+            elif m["result"]:
+                r = m["result"]; wnames = ", ".join([db["workers"][wid]["ring_name"] for wid in r["winners"]])
+                st.write(f"• {line} — **{wnames}** by {r['method']} ({r['time_s']}s)")
+                if m["recap_text"]: st.caption(m["recap_text"])
+            else:
+                st.write(f"• {line} — _(not run)_")
+    else:
+        st.caption("_No matches booked yet_")
+
+    c1,c2 = st.columns(2)
+    with c1:
+        if s["status"]=="upcoming" and st.button(f"Run Card: {s['name']}", key=f"run_{s['id']}"):
+            run_card(s["id"]); st.success("Show completed.")
+    with c2:
+        if st.button(f"Auto-book card: {s['name']}", key=f"book_{s['id']}"):
+            ensure_card(s["id"]); st.success("Card auto-booked.")
